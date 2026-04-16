@@ -491,3 +491,21 @@ Follow the [IndyDevDan YouTube channel](https://www.youtube.com/@indydevdan) to 
 
 ## Modifications
 This project is a fork of [claude-code-hooks-multi-agent-observability](https://github.com/disler/claude-code-hooks-multi-agent-observability) by Disler. Added EU AI Act compliance layer: SHA-256 hash chaining for tamper-evident audit trail (Art. 12), compliance report export (Art. 13), and bug fixes to the event insertion pipeline.
+
+## What I Added
+
+This fork extends the original project with an **EU AI Act compliance layer** focused on audit trail integrity and transparency.
+
+### EU AI Act - Article 12 (Data Integrity & Traceability)
+- Added `event_hash` and `prev_hash` columns to the SQLite events table
+- Each event is cryptographically linked to the previous one via SHA-256 hashing, forming a tamper-evident chain
+- Added `GET /events/last-hash` endpoint to retrieve the tip of the chain
+- Updated `send_event.py` to fetch the last hash and compute the new hash before submission
+- Added `verify_chain.py` to verify the integrity of the entire chain - any tampered record breaks it
+
+### EU AI Act - Article 13 (Transparency & Auditability)
+- Added `export_eu_act.py` to generate a structured JSON compliance report for auditors, containing project metadata, integrity method and the full cryptographically linked audit trail
+
+### Bug Fixes
+- Fixed broken `INSERT INTO events` statement in `db.ts` where column names were misaligned with the actual parameters, causing a runtime error on every incoming event
+- Fixed `verify_chain.py` hash recomputation logic to correctly deserialize the payload field before hashing, making local verification consistent with `send_event.py`
