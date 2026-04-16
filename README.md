@@ -2,9 +2,32 @@
 
 Real-time monitoring and visualization for Claude Code agents through comprehensive hook event tracking. Watch the [latest deep dive on multi-agent orchestration with Opus 4.6 here](https://youtu.be/RpUTF_U4kiw). With Claude Opus 4.6 and multi-agent orchestration, you can now spin up teams of specialized agents that work in parallel, and this observability system lets you trace every tool call, task handoff, and agent lifecycle event across the entire swarm.
 
+This project is a fork of [claude-code-hooks-multi-agent-observability](https://github.com/disler/claude-code-hooks-multi-agent-observability) by Disler. Added EU AI Act compliance layer: SHA-256 hash chaining for tamper-evident audit trail (Art. 12), compliance report export (Art. 13), and bug fixes to the event insertion pipeline.
+
+## What I Added
+
+This fork extends the original project with an **EU AI Act compliance layer** focused on audit trail integrity and transparency.
+
+### EU AI Act - Article 12 (Data Integrity & Traceability)
+
+- Added `event_hash` and `prev_hash` columns to the SQLite events table
+- Each event is cryptographically linked to the previous one via SHA-256 hashing, forming a tamper-evident chain
+- Added `GET /events/last-hash` endpoint to retrieve the tip of the chain
+- Updated `send_event.py` to fetch the last hash and compute the new hash before submission
+- Added `verify_chain.py` to verify the integrity of the entire chain - any tampered record breaks it
+
+### EU AI Act - Article 13 (Transparency & Auditability)
+
+- Added `export_eu_act.py` to generate a structured JSON compliance report for auditors, containing project metadata, integrity method and the full cryptographically linked audit trail
+
+### Bug Fixes
+
+- Fixed broken `INSERT INTO events` statement in `db.ts` where column names were misaligned with the actual parameters, causing a runtime error on every incoming event
+- Fixed `verify_chain.py` hash recomputation logic to correctly deserialize the payload field before hashing, making local verification consistent with `send_event.py`
+
 ## 🎯 Overview
 
-This system provides complete observability into Claude Code agent behavior by capturing, storing, and visualizing Claude Code [Hook events](https://docs.anthropic.com/en/docs/claude-code/hooks) in real-time. It enables monitoring of multiple concurrent agents with session tracking, event filtering, and live updates. 
+This system provides complete observability into Claude Code agent behavior by capturing, storing, and visualizing Claude Code [Hook events](https://docs.anthropic.com/en/docs/claude-code/hooks) in real-time. It enables monitoring of multiple concurrent agents with session tracking, event filtering, and live updates.
 
 <img src="images/app.png" alt="Multi-Agent Observability Dashboard" style="max-width: 800px; width: 100%;">
 
@@ -36,61 +59,68 @@ To setup observability in your repo,we need to copy the .claude directory to you
 To integrate the observability hooks into your projects:
 
 1. **Copy the entire `.claude` directory to your project root:**
+
    ```bash
    cp -R .claude /path/to/your/project/
    ```
 
 2. **Update the `settings.json` configuration:**
-   
+
    Open `.claude/settings.json` in your project and modify the `source-app` parameter to identify your project:
-   
+
    ```json
    {
      "hooks": {
-       "PreToolUse": [{
-         "matcher": "",
-         "hooks": [
-           {
-             "type": "command",
-             "command": "uv run .claude/hooks/pre_tool_use.py"
-           },
-           {
-             "type": "command",
-             "command": "uv run .claude/hooks/send_event.py --source-app YOUR_PROJECT_NAME --event-type PreToolUse --summarize"
-           }
-         ]
-       }],
-       "PostToolUse": [{
-         "matcher": "",
-         "hooks": [
-           {
-             "type": "command",
-             "command": "uv run .claude/hooks/post_tool_use.py"
-           },
-           {
-             "type": "command",
-             "command": "uv run .claude/hooks/send_event.py --source-app YOUR_PROJECT_NAME --event-type PostToolUse --summarize"
-           }
-         ]
-       }],
-       "UserPromptSubmit": [{
-         "hooks": [
-           {
-             "type": "command",
-             "command": "uv run .claude/hooks/user_prompt_submit.py --log-only"
-           },
-           {
-             "type": "command",
-             "command": "uv run .claude/hooks/send_event.py --source-app YOUR_PROJECT_NAME --event-type UserPromptSubmit --summarize"
-           }
-         ]
-       }]
+       "PreToolUse": [
+         {
+           "matcher": "",
+           "hooks": [
+             {
+               "type": "command",
+               "command": "uv run .claude/hooks/pre_tool_use.py"
+             },
+             {
+               "type": "command",
+               "command": "uv run .claude/hooks/send_event.py --source-app YOUR_PROJECT_NAME --event-type PreToolUse --summarize"
+             }
+           ]
+         }
+       ],
+       "PostToolUse": [
+         {
+           "matcher": "",
+           "hooks": [
+             {
+               "type": "command",
+               "command": "uv run .claude/hooks/post_tool_use.py"
+             },
+             {
+               "type": "command",
+               "command": "uv run .claude/hooks/send_event.py --source-app YOUR_PROJECT_NAME --event-type PostToolUse --summarize"
+             }
+           ]
+         }
+       ],
+       "UserPromptSubmit": [
+         {
+           "hooks": [
+             {
+               "type": "command",
+               "command": "uv run .claude/hooks/user_prompt_submit.py --log-only"
+             },
+             {
+               "type": "command",
+               "command": "uv run .claude/hooks/send_event.py --source-app YOUR_PROJECT_NAME --event-type UserPromptSubmit --summarize"
+             }
+           ]
+         }
+       ]
        // ... (similar patterns for all 12 hook events: Notification, Stop, SubagentStop,
-      //      SubagentStart, PreCompact, SessionStart, SessionEnd, PermissionRequest, PostToolUseFailure)
+       //      SubagentStart, PreCompact, SessionStart, SessionEnd, PermissionRequest, PostToolUseFailure)
      }
    }
    ```
-   
+
    Replace `YOUR_PROJECT_NAME` with a unique identifier for your project (e.g., `my-api-server`, `react-app`, etc.).
 
 3. **Ensure the observability server is running:**
@@ -307,22 +337,23 @@ Vue 3 application with real-time visualization:
 
 | Event Type         | Emoji | Purpose                | Color Coding  | Special Display                      |
 | ------------------ | ----- | ---------------------- | ------------- | ------------------------------------ |
-| PreToolUse         | 🔧     | Before tool execution  | Session-based | Tool name + tool emoji & details     |
-| PostToolUse        | ✅     | After tool completion  | Session-based | Tool name + tool emoji & results     |
-| PostToolUseFailure | ❌     | Tool execution failed  | Session-based | Error details & interrupt status     |
-| PermissionRequest  | 🔐     | Permission requested   | Session-based | Tool name & permission suggestions   |
-| Notification       | 🔔     | User interactions      | Session-based | Notification message & type          |
-| Stop               | 🛑     | Response completion    | Session-based | Summary & chat transcript            |
-| SubagentStart      | 🟢     | Subagent started       | Session-based | Agent ID & type                      |
-| SubagentStop       | 👥     | Subagent finished      | Session-based | Agent details & transcript path      |
-| PreCompact         | 📦     | Context compaction     | Session-based | Trigger & custom instructions        |
-| UserPromptSubmit   | 💬     | User prompt submission | Session-based | Prompt: _"user message"_ (italic)    |
-| SessionStart       | 🚀     | Session started        | Session-based | Source, model & agent type           |
-| SessionEnd         | 🏁     | Session ended          | Session-based | End reason (clear/logout/exit/other) |
+| PreToolUse         | 🔧    | Before tool execution  | Session-based | Tool name + tool emoji & details     |
+| PostToolUse        | ✅    | After tool completion  | Session-based | Tool name + tool emoji & results     |
+| PostToolUseFailure | ❌    | Tool execution failed  | Session-based | Error details & interrupt status     |
+| PermissionRequest  | 🔐    | Permission requested   | Session-based | Tool name & permission suggestions   |
+| Notification       | 🔔    | User interactions      | Session-based | Notification message & type          |
+| Stop               | 🛑    | Response completion    | Session-based | Summary & chat transcript            |
+| SubagentStart      | 🟢    | Subagent started       | Session-based | Agent ID & type                      |
+| SubagentStop       | 👥    | Subagent finished      | Session-based | Agent details & transcript path      |
+| PreCompact         | 📦    | Context compaction     | Session-based | Trigger & custom instructions        |
+| UserPromptSubmit   | 💬    | User prompt submission | Session-based | Prompt: _"user message"_ (italic)    |
+| SessionStart       | 🚀    | Session started        | Session-based | Source, model & agent type           |
+| SessionEnd         | 🏁    | Session ended          | Session-based | End reason (clear/logout/exit/other) |
 
 ### UserPromptSubmit Event (v1.0.54+)
 
 The `UserPromptSubmit` hook captures every user prompt before Claude processes it. In the UI:
+
 - Displays as `Prompt: "user's message"` in italic text
 - Shows the actual prompt content inline (truncated to 100 chars)
 - Summary appears on the right side when AI summarization is enabled
@@ -333,6 +364,7 @@ The `UserPromptSubmit` hook captures every user prompt before Claude processes i
 ### For New Projects
 
 1. Copy the event sender:
+
    ```bash
    cp .claude/hooks/send_event.py YOUR_PROJECT/.claude/hooks/
    ```
@@ -341,13 +373,17 @@ The `UserPromptSubmit` hook captures every user prompt before Claude processes i
    ```json
    {
      "hooks": {
-       "PreToolUse": [{
-         "matcher": ".*",
-         "hooks": [{
-           "type": "command",
-           "command": "uv run .claude/hooks/send_event.py --source-app YOUR_APP --event-type PreToolUse"
-         }]
-       }]
+       "PreToolUse": [
+         {
+           "matcher": ".*",
+           "hooks": [
+             {
+               "type": "command",
+               "command": "uv run .claude/hooks/send_event.py --source-app YOUR_APP --event-type PreToolUse"
+             }
+           ]
+         }
+       ]
      }
    }
    ```
@@ -355,6 +391,7 @@ The `UserPromptSubmit` hook captures every user prompt before Claude processes i
 ### For This Project
 
 Already integrated! Hooks run both validation and observability:
+
 ```json
 {
   "type": "command",
@@ -399,6 +436,7 @@ just hook-test pre_tool_use
 Copy `.env.sample` to `.env` in the project root and fill in your API keys:
 
 **Application Root** (`.env` file):
+
 - `ANTHROPIC_API_KEY` – Anthropic Claude API key (required)
 - `ENGINEER_NAME` – Your name (for logging/identification)
 - `OPENAI_API_KEY` – OpenAI API key (optional)
@@ -406,6 +444,7 @@ Copy `.env.sample` to `.env` in the project root and fill in your API keys:
 - `FIRECRAWL_API_KEY` – Firecrawl API key (optional, for web scraping)
 
 **Client** (`.env` file in `apps/client/.env`):
+
 - `VITE_MAX_EVENTS_TO_DISPLAY=100` – Maximum events to show (removes oldest when exceeded)
 
 ### Server Ports
@@ -433,6 +472,7 @@ Use the `/plan_w_team` slash command to create team-based implementation plans:
 This generates a spec document in `specs/` with task breakdowns, team member assignments, dependencies, and acceptance criteria. Plans are validated by Stop hook validators that ensure required sections are present.
 
 Execute a plan with:
+
 ```bash
 /build specs/<plan-name>.md
 ```
@@ -482,30 +522,9 @@ This is what separates engineers from vibe coders: understanding what's happenin
 - **Communication**: HTTP REST, WebSocket
 
 ## Master AI **Agentic Coding**
+
 > And prepare for the future of software engineering
 
 Learn tactical agentic coding patterns with [Tactical Agentic Coding](https://agenticengineer.com/tactical-agentic-coding?y=opsorch)
 
 Follow the [IndyDevDan YouTube channel](https://www.youtube.com/@indydevdan) to improve your agentic coding advantage.
-
-
-## Modifications
-This project is a fork of [claude-code-hooks-multi-agent-observability](https://github.com/disler/claude-code-hooks-multi-agent-observability) by Disler. Added EU AI Act compliance layer: SHA-256 hash chaining for tamper-evident audit trail (Art. 12), compliance report export (Art. 13), and bug fixes to the event insertion pipeline.
-
-## What I Added
-
-This fork extends the original project with an **EU AI Act compliance layer** focused on audit trail integrity and transparency.
-
-### EU AI Act - Article 12 (Data Integrity & Traceability)
-- Added `event_hash` and `prev_hash` columns to the SQLite events table
-- Each event is cryptographically linked to the previous one via SHA-256 hashing, forming a tamper-evident chain
-- Added `GET /events/last-hash` endpoint to retrieve the tip of the chain
-- Updated `send_event.py` to fetch the last hash and compute the new hash before submission
-- Added `verify_chain.py` to verify the integrity of the entire chain - any tampered record breaks it
-
-### EU AI Act - Article 13 (Transparency & Auditability)
-- Added `export_eu_act.py` to generate a structured JSON compliance report for auditors, containing project metadata, integrity method and the full cryptographically linked audit trail
-
-### Bug Fixes
-- Fixed broken `INSERT INTO events` statement in `db.ts` where column names were misaligned with the actual parameters, causing a runtime error on every incoming event
-- Fixed `verify_chain.py` hash recomputation logic to correctly deserialize the payload field before hashing, making local verification consistent with `send_event.py`
