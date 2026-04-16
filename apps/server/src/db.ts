@@ -55,6 +55,16 @@ export function initDatabase(): void {
     if (!hasModelNameColumn) {
       db.exec('ALTER TABLE events ADD COLUMN model_name TEXT');
     }
+
+    // EU AI Act Art. 12 - audit trail immutabile
+    const hasEventHashColumn = columns.some((col: any) => col.name === 'event_hash');
+    if (!hasEventHashColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN event_hash TEXT');
+    }
+    const hasPrevHashColumn = columns.some((col: any) => col.name === 'prev_hash');
+    if (!hasPrevHashColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN prev_hash TEXT');
+    }
   } catch (error) {
     // If the table doesn't exist yet, the CREATE TABLE above will handle it
   }
@@ -124,8 +134,20 @@ export function initDatabase(): void {
 
 export function insertEvent(event: HookEvent): HookEvent {
   const stmt = db.prepare(`
-    INSERT INTO events (source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO events (
+      source_app,
+      session_id,
+      hook_event_type,
+      payload,
+      chat,
+      summary,
+      timestamp,
+      humanInTheLoop,
+      humanInTheLoopStatus,
+      model_name,
+      event_hash,
+      prev_hash
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const timestamp = event.timestamp || Date.now();
@@ -146,7 +168,9 @@ export function insertEvent(event: HookEvent): HookEvent {
     timestamp,
     event.humanInTheLoop ? JSON.stringify(event.humanInTheLoop) : null,
     humanInTheLoopStatus ? JSON.stringify(humanInTheLoopStatus) : null,
-    event.model_name || null
+    event.model_name || null,
+    (event as any).event_hash || null,
+    (event as any).prev_hash || null
   );
 
   return {

@@ -488,3 +488,6 @@ Learn tactical agentic coding patterns with [Tactical Agentic Coding](https://ag
 
 Follow the [IndyDevDan YouTube channel](https://www.youtube.com/@indydevdan) to improve your agentic coding advantage.
 
+
+## Modifications
+This project is a fork of [claude-code-hooks-multi-agent-observability](https://github.com/disler/claude-code-hooks-multi-agent-observability) by Disler. Added EU AI Act compliance layer: SHA-256 hash chaining for tamper-evident audit trail (Art. 12), compliance report export (Art. 13), and bug fixes to the event insertion pipeline.
