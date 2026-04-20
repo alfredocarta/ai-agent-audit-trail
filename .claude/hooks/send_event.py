@@ -23,6 +23,7 @@ import os
 import argparse
 import urllib.request
 import urllib.error
+import hashlib
 from datetime import datetime
 from utils.summarizer import generate_event_summary
 from utils.model_extractor import get_model_from_transcript
@@ -54,6 +55,30 @@ def send_event_to_server(event_data, server_url='http://localhost:4000/events'):
     except Exception as e:
         print(f"Unexpected error: {e}", file=sys.stderr)
         return False
+
+def get_prev_hash(server_url):
+    """Recupera lhash dellultimo evento per costruire la catena (EU AI Act Art. 12)."""
+    try:
+        req = urllib.request.Request(server_url.replace("/events", "/events/last-hash"))
+        with urllib.request.urlopen(req, timeout=3) as response:
+            data = json.loads(response.read())
+            return data.get("hash", "0" * 64)
+    except Exception:
+        return "0" * 64
+
+def compute_event_hash(event_data, prev_hash):
+    """Calcola SHA-256 sui campi fissi dell'evento concatenato all'hash precedente.""";
+    fixed_fields = {
+        'source_app': event_data.get('source_app', ''),
+        'session_id': event_data.get('session_id', ''),
+        'hook_event_type': event_data.get('hook_event_type', ''),
+        'payload': event_data.get('payload', {}),
+        'timestamp': event_data.get('timestamp', 0),
+        'model_name': event_data.get('model_name', ''),
+        'prev_hash': prev_hash,
+    }
+    content = json.dumps(fixed_fields, sort_keys=True) + prev_hash
+    return hashlib.sha256(content.encode()).hexdigest()
 
 def main():
     # Parse command line arguments
@@ -171,6 +196,11 @@ def main():
             event_data['summary'] = summary
         # Continue even if summary generation fails
     
+    # EU AI Act Art. 12 - catena hash per immutabilita del log
+    prev_hash = get_prev_hash(args.server_url)
+    event_data["prev_hash"] = prev_hash
+    event_data["event_hash"] = compute_event_hash(event_data, prev_hash)
+
     # Send to server
     success = send_event_to_server(event_data, args.server_url)
     
