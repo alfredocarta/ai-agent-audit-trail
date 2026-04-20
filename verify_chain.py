@@ -79,6 +79,14 @@ def verify_chain():
             print(f"  Trovato: {stored_prev}")
             errors += 1
 
+        # Verifica che l'hash del contenuto corrisponda
+        expected_hash = compute_expected_hash(dict(event), prev_hash)
+        if expected_hash != stored_hash:
+            print(f"[ERRORE] Evento {event_id}: contenuto manomesso.")
+            print(f"  Hash atteso:  {expected_hash}")
+            print(f"  Hash trovato: {stored_hash}")
+            errors += 1
+
         prev_hash = stored_hash
 
     if errors == 0:
