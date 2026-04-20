@@ -1,4 +1,4 @@
-import { initDatabase, insertEvent, getFilterOptions, getRecentEvents, updateEventHITLResponse } from './db';
+import { initDatabase, insertEvent, getFilterOptions, getRecentEvents, updateEventHITLResponse, getLastHash } from './db';
 import type { HookEvent, HumanInTheLoopResponse } from './types';
 import { 
   createTheme, 
@@ -172,6 +172,16 @@ const server = Bun.serve({
       const limit = parseInt(url.searchParams.get('limit') || '300');
       const events = getRecentEvents(limit);
       return new Response(JSON.stringify(events), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // GET /events/last-hash - EU AI Act Art. 12 - restituisce hash dell'ultimo evento
+    if (url.pathname === '/events/last-hash' && req.method === 'GET') {
+      
+      const hash = getLastHash();
+      return new Response(JSON.stringify({ hash }), {
+        status: 200,
         headers: { ...headers, 'Content-Type': 'application/json' }
       });
     }

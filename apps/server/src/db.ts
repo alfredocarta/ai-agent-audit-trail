@@ -409,3 +409,7 @@ export function updateEventHITLResponse(id: number, response: any): HookEvent | 
 }
 
 export { db };
+export function getLastHash(): string {
+  const lastEvent = db.prepare('SELECT event_hash FROM events ORDER BY id DESC LIMIT 1').get() as any;
+  return lastEvent?.event_hash || '0'.repeat(64);
+}
