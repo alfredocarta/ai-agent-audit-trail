@@ -1,3 +1,4 @@
+import { createHmac } from 'crypto';
 import { initDatabase, insertEvent, getFilterOptions, getRecentEvents, updateEventHITLResponse, getLastHash } from './db';
 import type { HookEvent, HumanInTheLoopResponse } from './types';
 import { 
@@ -10,6 +11,8 @@ import {
   importTheme,
   getThemeStats 
 } from './theme';
+
+const HOOK_SECRET = process.env.HOOK_SECRET || '';
 
 // Initialize database
 initDatabase();
@@ -122,6 +125,16 @@ const server = Bun.serve({
     
     // POST /events - Receive new events
     if (url.pathname === '/events' && req.method === 'POST') {
+    // EU AI Act - verifica firma HMAC del hook
+    const sig = req.headers.get('x-hook-signature');
+    if (HOOK_SECRET) {
+      if (!sig) return new Response('Unauthorized', { status: 401 });
+      const bodyText = await req.text();
+      const expected = 'sha256=' + createHmac('sha256', HOOK_SECRET).update(bodyText).digest('hex');
+      if (sig !== expected) return new Response('Forbidden', { status: 403 });
+      req = new Request(req.url, { method: req.method, headers: req.headers, body: bodyText });
+    }
+
       try {
         const event: HookEvent = await req.json();
         

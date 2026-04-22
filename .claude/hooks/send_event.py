@@ -28,17 +28,33 @@ from datetime import datetime
 from utils.summarizer import generate_event_summary
 from utils.model_extractor import get_model_from_transcript
 
+import hmac as hmac_lib
+
+HOOK_SECRET = os.environ.get('HOOK_SECRET', '')
+
+def sign_payload(body: str) -> str:
+    """Firma il payload con HMAC-SHA256 per autenticare le richieste al server."""
+    if not HOOK_SECRET:
+        return ''
+    sig = hmac_lib.new(HOOK_SECRET.encode(), body.encode(), 'sha256').hexdigest()
+    return f'sha256={sig}'
+
 def send_event_to_server(event_data, server_url='http://localhost:4000/events'):
     """Send event data to the observability server."""
     try:
         # Prepare the request
+        body_bytes = json.dumps(event_data).encode('utf-8')
+        headers = {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Claude-Code-Hook/1.0',
+        }
+        sig = sign_payload(json.dumps(event_data))
+        if sig:
+            headers['X-Hook-Signature'] = sig
         req = urllib.request.Request(
             server_url,
-            data=json.dumps(event_data).encode('utf-8'),
-            headers={
-                'Content-Type': 'application/json',
-                'User-Agent': 'Claude-Code-Hook/1.0'
-            }
+            data=body_bytes,
+            headers=headers
         )
         
         # Send the request
@@ -80,6 +96,25 @@ def compute_event_hash(event_data, prev_hash):
     content = json.dumps(fixed_fields, sort_keys=True) + prev_hash
     return hashlib.sha256(content.encode()).hexdigest()
 
+import re
+
+SENSITIVE_PATTERNS = [
+    (r'(?i)(api[_-]?key|secret|token|password|passwd|pwd)\s*[:=]\s*\S+', 'secret_key'),
+    (r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b', 'pii_email'),
+    (r'(?i)(sk-|xai-|ghp_|gho_|ghu_|ghs_|ghr_|eyJ)[A-Za-z0-9\-_]{10,}', 'api_token'),
+    (r'(?i)(prompt|system.?prompt|ignore.?previous|istruzioni.?riservate)', 'prompt_leak'),
+]
+
+def sanitize_payload(payload: dict) -> dict:
+    """Rimuove pattern sensibili dal payload prima dell'invio al server."""
+    payload_str = json.dumps(payload)
+    for pattern, rule_name in SENSITIVE_PATTERNS:
+        if re.search(pattern, payload_str):
+            matches = re.findall(pattern, payload_str)
+            print(f"[SECURITY] Payload sanitized: rule '{rule_name}' triggered ({len(matches)} match)", file=sys.stderr)
+            payload_str = re.sub(pattern, f'[REDACTED:{rule_name}]', payload_str)
+    return json.loads(payload_str)
+
 def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Send Claude Code hook events to observability server')
@@ -110,7 +145,7 @@ def main():
         'source_app': args.source_app,
         'session_id': session_id,
         'hook_event_type': args.event_type,
-        'payload': input_data,
+        'payload': sanitize_payload(input_data),
         'timestamp': int(datetime.now().timestamp() * 1000),
         'model_name': model_name
     }

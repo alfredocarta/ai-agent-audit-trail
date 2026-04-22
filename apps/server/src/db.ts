@@ -65,6 +65,22 @@ export function initDatabase(): void {
     if (!hasPrevHashColumn) {
       db.exec('ALTER TABLE events ADD COLUMN prev_hash TEXT');
     }
+
+    // EU AI Act Art. 12 - append-only enforcement
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS trg_events_no_update
+      BEFORE UPDATE ON events
+      BEGIN
+        SELECT RAISE(ABORT, '[SECURITY] events table is append-only: UPDATE not permitted');
+      END
+    `);
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS trg_events_no_delete
+      BEFORE DELETE ON events
+      BEGIN
+        SELECT RAISE(ABORT, '[SECURITY] events table is append-only: DELETE not permitted');
+      END
+    `);
   } catch (error) {
     // If the table doesn't exist yet, the CREATE TABLE above will handle it
   }
